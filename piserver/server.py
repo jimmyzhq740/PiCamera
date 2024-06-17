@@ -6,14 +6,96 @@ import time
 import random
 import threading
 import argparse
+import cv2
 
+
+from picamera2 import  Picamera2
+from libcamera import  controls
 from flask import Flask, jsonify, Response
 from uuid import getnode as get_mac
 from utils import is_raspberry_pi, get_thing
-from camera import gen_video, set_lensposition_state, capture_and_send_image
+#from camera import gen_video, set_lensposition_state, capture_and_send_image,set_exposure_state
+
+lensposition=5
+#in microseconds
+exposuretime=10000
+picam2=None
 
 app = Flask(__name__)
+def get_camera():
+    global picam2
+    if picam2 is None: 
+        picam2 = Picamera2()
+    return picam2
 
+def release_camera():
+    global picam2
+    if picam2 is not None:
+        picam2.stop()
+        picam2.close()
+        picam2=None
+
+def stop_camera():
+    release_camera()
+
+def gen_video():
+    """Video streaming generator function."""
+    global lensposition
+    global exposuretime
+    picam2 = get_camera()
+    capture_config=picam2.create_still_configuration({'format':'RGB888', 'size':(800,606)})
+    picam2.configure(capture_config)
+    picam2.start()
+    
+    #vs = cv2.VideoCapture(0)
+    while True:
+        picam2.set_controls({"ExposureTime":exposuretime})
+        # Set manual focus
+        picam2.set_controls({"AfMode": controls.AfModeEnum.Manual,"LensPosition":lensposition})
+        frame = picam2.capture_array()
+        #print (lensposition)
+        #ret,frame=vs.read()
+        ret, jpeg = cv2.imencode('.jpg', frame)
+        frame=jpeg.tobytes()
+        yield (b'--frame\r\n'
+        b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+def capture_and_send_image(counter):
+    global lensposition
+    global exposuretime
+    picam2 = get_camera()
+    capture_config=picam2.create_still_configuration({'format':'RGB888', 'size':(800,606)})
+    picam2.configure(capture_config)
+    picam2.start()
+    picam2.set_controls({"ExposureTime":exposuretime})
+    for i in range (counter):
+        time.sleep(2)
+        image_path = f'/home/jimmyzhang1/Desktop/piserver/images/image_{i}.jpg'
+        picam2.set_controls({"AfMode": controls.AfModeEnum.Manual,"LensPosition":lensposition})
+        picam2.capture_file(image_path)
+    release_camera()
+
+def set_lensposition_state (state):
+    global lensposition
+    if state == 'increase':
+        lensposition += 1
+        print (lensposition)
+        return lensposition
+    elif state == 'decrease':
+        lensposition -=1
+        print (lensposition)
+        return lensposition
+
+def set_exposure_state(state):
+    global exposuretime
+    if state == 'increase':
+        exposuretime += 1000
+        print (exposuretime)
+        return exposuretime
+    elif state == 'decrease':
+        exposuretime -= 1000
+        print (exposuretime)
+        return exposuretime
 
 def get_ip():
     """
@@ -141,6 +223,16 @@ def decrease_lens():
     result = set_lensposition_state ('decrease')
     return jsonify(result)   
 
+@app.route('/increaseexposuretime')
+def increase_exposuretime():
+    result = set_exposure_state ('increase')
+    return jsonify(result)     
+
+@app.route('/decreaseexposuretime')
+def decrease_exposuretime():
+    result = set_exposure_state ('decrease')
+    return jsonify(result)
+
 @app.route('/video_feed')
 def video_feed():
     """Video streaming route. Put this in the src attribute of an img tag."""
@@ -150,6 +242,11 @@ def video_feed():
 def start_capture():
     capture_and_send_image(30)
     return jsonify({"message": "Capture Finished"}),200
+
+@app.route('/stopcamera')
+def stop_camera_endpoint():
+    stop_camera()
+    return jsonify({'message':'Camera stopped'})
     
 
 if __name__ == "__main__":
