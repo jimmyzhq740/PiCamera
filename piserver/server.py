@@ -43,6 +43,7 @@ def gen_video():
     global lensposition
     global exposuretime
     picam2 = get_camera()
+    print('hi')
     capture_config=picam2.create_still_configuration({'format':'RGB888', 'size':(800,606)})
     picam2.configure(capture_config)
     picam2.start()
@@ -240,7 +241,7 @@ def video_feed():
 
 @app.route('/start_capture')
 def start_capture():
-    capture_and_send_image(30)
+    capture_and_send_image(10)
     return jsonify({"message": "Capture Finished"}),200
 
 @app.route('/stopcamera')
