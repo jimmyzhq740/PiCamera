@@ -8,10 +8,10 @@ import threading
 import argparse
 import cv2
 
-
+from datetime import datetime
 from picamera2 import  Picamera2
 from libcamera import  controls
-from flask import Flask, jsonify, Response
+from flask import Flask, jsonify, Response, send_file, request
 from uuid import getnode as get_mac
 from utils import is_raspberry_pi, get_thing
 #from camera import gen_video, set_lensposition_state, capture_and_send_image,set_exposure_state
@@ -35,8 +35,7 @@ def release_camera():
         picam2.close()
         picam2=None
 
-def stop_camera():
-    release_camera()
+
 
 def gen_video():
     """Video streaming generator function."""
@@ -44,7 +43,7 @@ def gen_video():
     global exposuretime
     picam2 = get_camera()
     print('hi')
-    capture_config=picam2.create_still_configuration({'format':'RGB888', 'size':(800,606)})
+    capture_config=picam2.create_still_configuration({'format':'RGB888', 'size':(600,800)})
     picam2.configure(capture_config)
     picam2.start()
     
@@ -65,16 +64,23 @@ def capture_and_send_image(counter):
     global lensposition
     global exposuretime
     picam2 = get_camera()
-    capture_config=picam2.create_still_configuration({'format':'RGB888', 'size':(800,606)})
+    capture_config=picam2.create_still_configuration({'format':'RGB888', 'size':(3072,4096)})
     picam2.configure(capture_config)
     picam2.start()
     picam2.set_controls({"ExposureTime":exposuretime})
+    image_directory= '/home/jimmyzhang/Desktop/piserver/images'
+    if not os.path.exists(image_directory):
+        os.makedirs(image_directory)
+    image_paths=[]
     for i in range (counter):
         time.sleep(2)
-        image_path = f'/home/jimmyzhang1/Desktop/piserver/images/image_{i}.jpg'
+        current_time=datetime.now().strftime("%Y%m%d_%H%M%S")
+        image_path = f'{image_directory}/image_{current_time}.jpg'
         picam2.set_controls({"AfMode": controls.AfModeEnum.Manual,"LensPosition":lensposition})
         picam2.capture_file(image_path)
+        image_paths.append(image_path)
     release_camera()
+    return image_paths
 
 def set_lensposition_state (state):
     global lensposition
@@ -211,8 +217,10 @@ def reboot():
     """
     Endpoint to reboot
     """
-    os.system('reboot now')
+    os.system('sudo reboot')
     return jsonify({"ok": "ok"})
+
+#http://127.0.0.1:5000/reboot
 
 @app.route('/increaselens')
 def increase_lens():
@@ -241,12 +249,18 @@ def video_feed():
 
 @app.route('/start_capture')
 def start_capture():
-    capture_and_send_image(10)
-    return jsonify({"message": "Capture Finished"}),200
+    image_paths = capture_and_send_image(10)
+    image_urls = [f"http://{request.host}/images/{os.path.basename(path)}" for path in image_paths]
+    return jsonify({"images":image_urls}),200
+
+@app.route('/images/<filename>')
+def get_image(filename):
+    image_path = os.path.join('/home/jimmyzhang/Desktop/piserver/images', filename)
+    return send_file(image_path, mimetype='image/jpeg')
 
 @app.route('/stopcamera')
 def stop_camera_endpoint():
-    stop_camera()
+    release_camera()
     return jsonify({'message':'Camera stopped'})
     
 
