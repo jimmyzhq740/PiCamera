@@ -16,7 +16,7 @@ save_directory = "/home/jimmyzhang1/Desktop/wheat_images"
 # Create the directory if it does not exist
 os.makedirs(save_directory, exist_ok=True)
 
-capture_config2=picam2.set_controls({"ExposureTime":60000,"AnalogueGain":1.5})
+capture_config2=picam2.set_controls({"ExposureTime":10000,"AnalogueGain":1.5})
 picam2.title_fields=["ExposureTime", "AnalogueGain"]
 # Start the camera preview
 picam2.start_preview(Preview.QTGL)
